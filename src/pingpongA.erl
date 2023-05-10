@@ -20,9 +20,11 @@
 
 -behaviour(gen_server).
 
+-include_lib("kernel/include/logger.hrl").
+
 %% API
 -export([start_link/0]).
--export([message/1]).
+-export([message/1, rand_trigger/0, get_queue/0, random_map/1]).
 -export([stop/0]).
 
 -export([create_map/2]).
@@ -63,6 +65,14 @@ create_map(List1, List2) ->
 message(Msg) ->
     gen_server:call(?MODULE, {msg, Msg}).
 
+get_queue() ->
+    gen_server:call(?MODULE, {cmd, get_queue}).
+
+rand_trigger() ->
+    Len = rand:uniform(100),
+    RandMap = random_map(Len),
+    gen_server:call(?MODULE, {msg, RandMap}).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -97,14 +107,26 @@ init([]) ->
           {noreply, NewState :: term(), hibernate} |
           {stop, Reason :: term(), Reply :: term(), NewState :: term()} |
           {stop, Reason :: term(), NewState :: term()}.
+handle_call({cmd, get_queue}, _From, State) ->
+    Return = current_queue(),
+    {reply, Return, State};
 handle_call({msg, ping}, _From, State) ->
     List1 = [1,2,3,4,5],
     List2 = [a,b,c,d,e],
-    io:format("~n Starting pingpong...: ~p ~p", [List1, List2]),
+    ?LOG_DEBUG("~n Starting pingpong...: ~p ~p", [List1, List2]),
     Msg = {cast_msg, List1, List2},
     gen_server:cast(pingpongB, Msg),
     gen_server:cast(pingpongB, Msg),
     {reply, ok, State};
+handle_call({msg, Map}, _From, State) when is_map(Map)->
+    io:format("~n Starting pingpong...PING MESSAGE: ~p", [Map]),
+    List1 =  maps:keys(Map),
+    List2 = maps:values(Map),
+    Msg = {cast_msg, List1, List2},
+    gen_server:cast(pingpongB, Msg),
+    gen_server:cast(pingpongB, Msg),
+    {reply, ok, State};
+
 handle_call({create_map, List1, List2}, _From, State) ->
     Res = gen_server:call(pingpongB, {create_map, List1, List2}),
     {reply, Res, State};
@@ -124,9 +146,8 @@ handle_call(_Request, _From, State) ->
           {noreply, NewState :: term(), hibernate} |
           {stop, Reason :: term(), NewState :: term()}.
 handle_cast({cast_msg, List1, List2, Map}, State) ->
-    %% CountNum = count_messages(self()),
-    {message_queue_len, QueueCnt} = erlang:process_info(self(), message_queue_len),
-    io:format("~n B -> A: ~p......QUEUE_A: ~p", [Map, QueueCnt]),
+    QueueCnt = current_queue(),
+    ?LOG_DEBUG("~n B -> A(~p): ~p......QUEUE_A: ~p", [erl_trace_process_info(), Map, QueueCnt]),
     case QueueCnt > ?STOP_LIMIT of
         true ->
             %% Stop sending out
@@ -204,8 +225,28 @@ format_status(_Opt, Status) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+current_queue() ->
+    {message_queue_len, QueueCnt} = erlang:process_info(self(), message_queue_len),
+    QueueCnt.
 
+random_map(Length) ->
+    Map0 =  maps:new(),
+    Map1 = lists:foldl(
+             fun(_, AccMap) ->
+                     Key = generate_random_atom(),
+                     Value = rand:uniform(100),
+                     maps:put(Key,Value,AccMap)
+             end,
+             Map0,
+             lists:seq(1, Length)
+            ),
+    Map1.
 
+generate_random_atom() ->
+    %% Generate a random number between 97 and 122 (ASCII range for lowercase letters)
+    RandomInt = rand:uniform(26) + 97,
+    RandomAtom = list_to_atom([RandomInt]),
+    RandomAtom.
 
 %% erl-trace support functions
 -ifdef(IO_TRACE_DEBUG).

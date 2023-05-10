@@ -7,7 +7,7 @@ $ make all
 ```
 $ make all
 rm -f ebin/*.beam
-cp -rf src/pingpong.app.src ebin/pingpong_app.app
+cp -rf src/pmkingpong.app.src ebin/pingpong_app.app
 erlc -o ebin src/*.erl
 erl -pa ebin -name test@local -setcookie mycookie
 Erlang/OTP 22 [erts-10.7.2.18] [source] [64-bit] [smp:8:8] [ds:8:8:10] [async-threads:1] [dtrace]
@@ -66,8 +66,8 @@ pingpongA:message(ping).
  B -> A: #{1 => a,2 => b,3 => c,4 => d,5 => e}......QUEUE_A: 13
  ....
  ```
-* Explanation (Before BONUS) `git checkout before_bonus`
 
+* Explanation (Before BONUS) : `git checkout before_bonus`
 . At begining, the queue of two servers increase quickly.
 ```
  A -> B(pingpongB): [1,2,3,4,5][a,b,c,d,e]......QUEUE_B: 2
@@ -178,3 +178,71 @@ pingpongA:message(ping).
  ```
 
 . A and B servers keep repeat that behavior. The result is Queue of B server will keep ~2000 and Queue of A server ~0
+
+
+## BONUS 1
+
+Start sereral triggers after start application:
+```
+λ ~ make
+rm -f ebin/*.beam
+mkdir -p ebin
+cp -rf src/pingpong.app.src ebin/pingpong_app.app
+erlc -o ebin src/*.erl
+erl -pa ebin -name test@local -setcookie mycookie
+Erlang/OTP 22 [erts-10.7.2.18] [source] [64-bit] [smp:8:8] [ds:8:8:10] [async-threads:1] [dtrace]
+
+Eshell V10.7.2.18  (abort with ^G)
+(test@local)1> application:start(pingpong_app).
+ok
+(test@local)2> pingpongA:rand_trigger().
+
+ Starting pingpong...PING MESSAGE: #{b => 8,c => 88,d => 13,g => 12,h => 9,
+                                     j => 87,k => 66,l => 97,m => 48,n => 32,
+                                     o => 40,r => 75,s => 5,t => 16,u => 55,
+                                     v => 34,w => 75,x => 39,y => 34,z => 34,
+                                     '{' => 95}ok
+(test@local)3> pingpongA:rand_trigger().
+
+ Starting pingpong...PING MESSAGE: #{c => 17,e => 18,i => 17,j => 24,k => 30,
+                                     s => 53}ok
+(test@local)4> pingpongA:rand_trigger().
+
+ Starting pingpong...PING MESSAGE: #{b => 25,c => 30,d => 78,e => 55,f => 75,
+                                     g => 35,j => 11,k => 27,l => 68,m => 63,
+                                     n => 9,o => 12,p => 100,q => 4,r => 43,
+                                     s => 91,t => 96,u => 18,v => 82,w => 92,
+                                     x => 28,y => 50,'{' => 99}ok
+(test@local)5> pingpongA:rand_trigger().
+
+ Starting pingpong...PING MESSAGE: #{b => 61,c => 80,d => 68,e => 4,f => 55,
+                                     g => 80,h => 46,i => 83,j => 30,k => 58,
+                                     l => 6,m => 9,n => 1,o => 64,p => 78,
+                                     q => 54,r => 5,s => 73,t => 56,u => 28,
+                                     v => 74,w => 50,x => 91,y => 73,z => 93,
+                                     '{' => 52}ok
+```
+This will generate random map as a PING message that send to A server.
+More than one trigger with different length in lists can be created.
+
+* Turn on log for A and B servers
+```
+(test@local)6> logger:set_module_level([pingpongA, pingpongB], debug).
+
+(test@local)7> =DEBUG REPORT==== 10-May-2023::21:51:21.550692 ===
+
+ B -> A(pingpongA): #{e => 28,f => 47,g => 97,h => 39,j => 32,k => 69,l => 24,
+                      m => 96,n => 5,p => 55,s => 41,w => 89,x => 36,y => 91}......QUEUE_A: 29
+=DEBUG REPORT==== 10-May-2023::21:51:21.550935 ===
+
+ B -> A(pingpongA): #{e => 28,f => 47,g => 97,h => 39,j => 32,k => 69,l => 24,
+                      m => 96,n => 5,p => 55,s => 41,w => 89,x => 36,y => 91}......QUEUE_A: 28
+=DEBUG REPORT==== 10-May-2023::21:51:21.550987 ===
+
+ B -> A(pingpongA): #{e => 28,f => 47,g => 97,h => 39,j => 32,k => 69,l => 24,
+                      m => 96,n => 5,p => 55,s => 41,w => 89,x => 36,y => 91}......QUEUE_A: 27
+=DEBUG REPORT==== 10-May-2023::21:51:21.551023 ===
+
+ B -> A(pingpongA): #{e => 28,f => 47,g => 97,h => 39,j => 32,k => 69,l => 24,
+                      m => 96,n => 5,p => 55,s => 41,w => 89,x => 36,y => 91}......QUEUE_A: 26
+```

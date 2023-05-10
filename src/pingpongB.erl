@@ -20,11 +20,12 @@
 
 -behaviour(gen_server).
 
+-include_lib("kernel/include/logger.hrl").
+
 %% API
 -export([start_link/0]).
 -export([stop/0]).
-
--export([create_map/2]).
+-export([create_map/2, get_queue/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -60,6 +61,9 @@ stop() ->
 create_map(List1, List2) ->
     gen_server:call(?MODULE, {create_map, List1, List2}).
 
+get_queue() ->
+    gen_server:call(?MODULE, {cmd, get_queue}).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -94,6 +98,10 @@ init([]) ->
           {noreply, NewState :: term(), hibernate} |
           {stop, Reason :: term(), Reply :: term(), NewState :: term()} |
           {stop, Reason :: term(), NewState :: term()}.
+
+handle_call({cmd, get_queue}, _From, State) ->
+    Return = current_queue(),
+    {reply, Return, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -110,8 +118,8 @@ handle_call(_Request, _From, State) ->
           {noreply, NewState :: term(), hibernate} |
           {stop, Reason :: term(), NewState :: term()}.
 handle_cast({cast_msg, List1, List2}, State) ->
-    {message_queue_len, QueueCnt} = erlang:process_info(self(), message_queue_len),
-    io:format("~n A -> B: ~p~p......QUEUE_B: ~p", [List1, List2, QueueCnt]),
+    QueueCnt = current_queue(),
+    ?LOG_DEBUG("~n A -> B(~p): ~p~p......QUEUE_B: ~p", [erl_trace_process_info(), List1, List2, QueueCnt]),
     case QueueCnt > ?STOP_LIMIT of
         true ->
             %% Stop sending out
@@ -190,6 +198,10 @@ format_status(_Opt, Status) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+current_queue() ->
+    {message_queue_len, QueueCnt} = erlang:process_info(self(), message_queue_len),
+    QueueCnt.
+
 do_create_map(List1, List2) ->
     do_create_map(List1, List2, maps:new()).
 
