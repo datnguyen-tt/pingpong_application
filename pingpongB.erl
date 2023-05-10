@@ -1,3 +1,13 @@
+-define(IO_TRACE_DEBUG, true).
+-define(iotd(Fmt), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE], {io, simple})).
+-define(iotd(Fmt, Args), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args, {io, simple})).
+-define(iotdd(Fmt), erl_trace(Fmt, {io, [?MODULE, ?FUNCTION_NAME, ?LINE],complex})).
+-define(iotdd(Fmt, Args), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args, {io, complex})).
+-define(cttd(Fmt), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE], {ct, simple})).
+-define(cttd(Fmt, Args), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args, {ct, simple})).
+-define(cttdd(Fmt), erl_trace(Fmt, {ct, [?MODULE, ?FUNCTION_NAME, ?LINE],complex})).
+-define(cttdd(Fmt, Args), erl_trace(Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE] ++ Args, {ct, complex})).
+
 %%%-------------------------------------------------------------------
 %%% @author Dat Nguyen <datnguyen@DATNGUYEN-M1.local>
 %%% @copyright (C) 2023, Dat Nguyen
@@ -76,8 +86,9 @@ init([]) ->
           {stop, Reason :: term(), Reply :: term(), NewState :: term()} |
           {stop, Reason :: term(), NewState :: term()}.
 handle_call({create_map, List1, List2}, _From, State) ->
-    Map = create_map(List1, List2),
-    {reply, Map, State}.
+    ?iotdd("~nList1: ~p~nList2: ~p~n", [List1, List2]),
+    Map = do_create_map(List1, List2),
+    {reply, Map, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -150,8 +161,56 @@ code_change(_OldVsn, State, _Extra) ->
 format_status(_Opt, Status) ->
     Status.
 
+%% %%%===================================================================
+%% %%% Internal functions
+%% %%%===================================================================
+%% do_create_map(_List1, _List2) ->
+%%     ok.
+
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-create_map(_List1, _List2) ->
-    ok.
+do_create_map(List1, List2) ->
+    io:format("B server is creating a Map from: ~p, ~p", [List1, List2]),
+    do_create_map(List1, List2, maps:new()).
+
+do_create_map([], [], Map) ->
+    Map;
+do_create_map([Key | Keys], [Val | Vals], Map) ->
+    NewMap = maps:put(Key, Val, Map),
+    do_create_map(Keys, Vals, NewMap).
+
+%% erl-trace support functions
+-ifdef(IO_TRACE_DEBUG).
+erl_trace(Fmt, Args, {Type, Level}) ->
+    case ?IO_TRACE_DEBUG of
+        true ->
+            {FullFmt, FullArgs} =
+                case Level of
+                    simple -> {"~p:~p:~p "++Fmt, Args};
+                    complex -> {"~p:~p:~s:~p:~p:~p: "++Fmt++"~n",
+                                [erl_trace_process_info(),
+                                 erl_trace_get_user(),
+                                 erl_trace_timestamp()] ++ Args}
+                end,
+            case Type of
+                io -> io:format(FullFmt, FullArgs);
+                ct -> ct:pal(FullFmt, FullArgs)
+            end;
+        false -> ok
+    end.
+
+erl_trace_process_info() ->
+    proplists:get_value(registered_name, process_info(self()), self()).
+
+erl_trace_get_user() ->
+    string:strip(os:cmd("id -F"), right, $\n).
+
+erl_trace_timestamp() ->
+    {MS, S, US} = os:timestamp(),
+    {_, {Hour, Min, Sec}} = calendar:now_to_local_time({MS, S, US}),
+    MSec = trunc(US/1000),
+    lists:flatten(io_lib:format("~2.10.0B:~2.10.0B:~2.10.0B.~3.10.0B",
+                                [Hour, Min, Sec, MSec])).
+-endif.
