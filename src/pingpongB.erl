@@ -34,6 +34,10 @@
 
 -record(state, {}).
 
+
+-define(RECUDE_LIMIT, 1000).
+-define(STOP_LIMIT, 2000).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -90,10 +94,6 @@ init([]) ->
           {noreply, NewState :: term(), hibernate} |
           {stop, Reason :: term(), Reply :: term(), NewState :: term()} |
           {stop, Reason :: term(), NewState :: term()}.
-handle_call({create_map, List1, List2}, _From, State) ->
-    ?iotdd("~nList1: ~p~nList2: ~p~n", [List1, List2]),
-    Map = do_create_map(List1, List2),
-    {reply, Map, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -109,6 +109,25 @@ handle_call(_Request, _From, State) ->
           {noreply, NewState :: term(), Timeout :: timeout()} |
           {noreply, NewState :: term(), hibernate} |
           {stop, Reason :: term(), NewState :: term()}.
+handle_cast({cast_msg, List1, List2}, State) ->
+    {message_queue_len, QueueCnt} = erlang:process_info(self(), message_queue_len),
+    io:format("~n A -> B: ~p~p......QUEUE_B: ~p", [List1, List2, QueueCnt]),
+    case QueueCnt > ?STOP_LIMIT of
+        true ->
+            %% Stop sending out
+            ok;
+        false ->
+            Map = do_create_map(List1, List2),
+            ReMsg = {cast_msg, List1, List2, Map},
+            case QueueCnt > ?RECUDE_LIMIT of
+                true ->
+                    gen_server:cast(pingpongA, ReMsg);
+                false ->
+                    gen_server:cast(pingpongA, ReMsg),
+                    gen_server:cast(pingpongA, ReMsg)
+            end
+    end,
+    {noreply, State};
 handle_cast(stop, State) ->
     {stop, normal, State};
 handle_cast(_Request, State) ->
@@ -172,7 +191,6 @@ format_status(_Opt, Status) ->
 %%% Internal functions
 %%%===================================================================
 do_create_map(List1, List2) ->
-    io:format("B server is creating a Map from: ~p, ~p", [List1, List2]),
     do_create_map(List1, List2, maps:new()).
 
 do_create_map([], [], Map) ->

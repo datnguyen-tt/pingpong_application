@@ -1,0 +1,8 @@
+{application, pingpong_app,
+ [{description, "Pingpong application"},
+  {vsn, "1"},
+  {modules, [pingping_app]},
+  {registered, [pingpongA, pingpongB]},
+  {applications, [kernel, stdlib]},
+  {mod, {pingpong_app,[]}}
+ ]}.

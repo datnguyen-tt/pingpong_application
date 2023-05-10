@@ -22,6 +22,7 @@
 
 %% API
 -export([start_link/0]).
+-export([message/1]).
 -export([stop/0]).
 
 -export([create_map/2]).
@@ -33,6 +34,9 @@
 -define(SERVER, ?MODULE).
 
 -record(state, {}).
+
+-define(RECUDE_LIMIT, 1000).
+-define(STOP_LIMIT, 2000).
 
 %%%===================================================================
 %%% API
@@ -55,6 +59,9 @@ stop() ->
 
 create_map(List1, List2) ->
     gen_server:call(?MODULE, {create_map, List1, List2}).
+
+message(Msg) ->
+    gen_server:call(?MODULE, {msg, Msg}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -90,12 +97,16 @@ init([]) ->
           {noreply, NewState :: term(), hibernate} |
           {stop, Reason :: term(), Reply :: term(), NewState :: term()} |
           {stop, Reason :: term(), NewState :: term()}.
+handle_call({msg, ping}, _From, State) ->
+    List1 = [1,2,3,4,5],
+    List2 = [a,b,c,d,e],
+    io:format("~n Starting pingpong...: ~p ~p", [List1, List2]),
+    Msg = {cast_msg, List1, List2},
+    gen_server:cast(pingpongB, Msg),
+    gen_server:cast(pingpongB, Msg),
+    {reply, ok, State};
 handle_call({create_map, List1, List2}, _From, State) ->
-    ?iotdd("Server A get two list ~nList1: ~p~nList2: ~p~n", [List1, List2]),
-    %% Call to B servers
-    Res = pingpongB:create_map(List1, List2),
-    ?iotdd("~nServer A get retured map from B ~nRes: ~p~n", [Res]),
-
+    Res = gen_server:call(pingpongB, {create_map, List1, List2}),
     {reply, Res, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -112,6 +123,25 @@ handle_call(_Request, _From, State) ->
           {noreply, NewState :: term(), Timeout :: timeout()} |
           {noreply, NewState :: term(), hibernate} |
           {stop, Reason :: term(), NewState :: term()}.
+handle_cast({cast_msg, List1, List2, Map}, State) ->
+    %% CountNum = count_messages(self()),
+    {message_queue_len, QueueCnt} = erlang:process_info(self(), message_queue_len),
+    io:format("~n B -> A: ~p......QUEUE_A: ~p", [Map, QueueCnt]),
+    case QueueCnt > ?STOP_LIMIT of
+        true ->
+            %% Stop sending out
+            ok;
+        false ->
+            ReMsg = {cast_msg, List1, List2},
+            case QueueCnt > ?RECUDE_LIMIT of
+                true ->
+                    gen_server:cast(pingpongB, ReMsg);
+                false ->
+                    gen_server:cast(pingpongB, ReMsg),
+                    gen_server:cast(pingpongB, ReMsg)
+            end
+    end,
+    {noreply, State};
 handle_cast(stop, State) ->
     {stop, normal, State};
 handle_cast(_Request, State) ->
@@ -174,6 +204,8 @@ format_status(_Opt, Status) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+
 
 %% erl-trace support functions
 -ifdef(IO_TRACE_DEBUG).
