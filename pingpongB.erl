@@ -22,6 +22,8 @@
 
 %% API
 -export([start_link/0]).
+-export([stop/0]).
+
 -export([create_map/2]).
 
 %% gen_server callbacks
@@ -47,6 +49,9 @@
           ignore.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+stop() ->
+    gen_server:cast(?MODULE, stop).
 
 create_map(List1, List2) ->
     gen_server:call(?MODULE, {create_map, List1, List2}).
@@ -104,6 +109,8 @@ handle_call(_Request, _From, State) ->
           {noreply, NewState :: term(), Timeout :: timeout()} |
           {noreply, NewState :: term(), hibernate} |
           {stop, Reason :: term(), NewState :: term()}.
+handle_cast(stop, State) ->
+    {stop, normal, State};
 handle_cast(_Request, State) ->
     {noreply, State}.
 
@@ -160,13 +167,6 @@ code_change(_OldVsn, State, _Extra) ->
                     Status :: list()) -> Status :: term().
 format_status(_Opt, Status) ->
     Status.
-
-%% %%%===================================================================
-%% %%% Internal functions
-%% %%%===================================================================
-%% do_create_map(_List1, _List2) ->
-%%     ok.
-
 
 %%%===================================================================
 %%% Internal functions

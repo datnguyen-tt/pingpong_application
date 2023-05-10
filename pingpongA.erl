@@ -22,6 +22,7 @@
 
 %% API
 -export([start_link/0]).
+-export([stop/0]).
 
 -export([create_map/2]).
 
@@ -49,6 +50,8 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+stop() ->
+    gen_server:cast(?MODULE, stop).
 
 create_map(List1, List2) ->
     gen_server:call(?MODULE, {create_map, List1, List2}).
@@ -88,10 +91,11 @@ init([]) ->
           {stop, Reason :: term(), Reply :: term(), NewState :: term()} |
           {stop, Reason :: term(), NewState :: term()}.
 handle_call({create_map, List1, List2}, _From, State) ->
+    ?iotdd("Server A get two list ~nList1: ~p~nList2: ~p~n", [List1, List2]),
     %% Call to B servers
     Res = pingpongB:create_map(List1, List2),
-    ?iotdd("~nRes: ~p~n", [Res]),
-    %% Reply = ok,
+    ?iotdd("~nServer A get retured map from B ~nRes: ~p~n", [Res]),
+
     {reply, Res, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -108,6 +112,8 @@ handle_call(_Request, _From, State) ->
           {noreply, NewState :: term(), Timeout :: timeout()} |
           {noreply, NewState :: term(), hibernate} |
           {stop, Reason :: term(), NewState :: term()}.
+handle_cast(stop, State) ->
+    {stop, normal, State};
 handle_cast(_Request, State) ->
     {noreply, State}.
 
