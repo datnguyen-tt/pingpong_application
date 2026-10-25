@@ -1,0 +1,903 @@
+<title>Pingpong Mailbox Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: an Erlang-observer workbench — process stage, queue chart and shell console on the left; a tall parameter rail on the right */
+:root {
+  --bg: #edf0f4;
+  --panel: #fbfcfd;
+  --sunken: #e3e8ee;
+  --ink: #16202b;
+  --muted: #5a6777;
+  --line: #d0d8e1;
+  --a: #0b8282;
+  --b: #5450cf;
+  --ok: #2c8a55;
+  --reduce: #b4761a;
+  --stop: #c03a2b;
+  --a-soft: color-mix(in srgb, var(--a) 13%, transparent);
+  --b-soft: color-mix(in srgb, var(--b) 13%, transparent);
+  --ok-soft: color-mix(in srgb, var(--ok) 15%, transparent);
+  --reduce-soft: color-mix(in srgb, var(--reduce) 17%, transparent);
+  --stop-soft: color-mix(in srgb, var(--stop) 15%, transparent);
+  --f-display: 'Bricolage Grotesque', 'IBM Plex Sans', system-ui, sans-serif;
+  --f-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --f-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131a; --panel: #151c25; --sunken: #0a0f15; --ink: #e2e8ef; --muted: #93a1b1; --line: #27313d;
+    --a: #3fc5c2; --b: #9591f5; --ok: #52c283; --reduce: #e0a443; --stop: #ef6b5b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131a; --panel: #151c25; --sunken: #0a0f15; --ink: #e2e8ef; --muted: #93a1b1; --line: #27313d;
+  --a: #3fc5c2; --b: #9591f5; --ok: #52c283; --reduce: #e0a443; --stop: #ef6b5b;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.45; }
+code, .mono { font-family: var(--f-mono); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--a); outline-offset: 2px; }
+
+.app { max-width: 1440px; margin: 0 auto; padding-block: 20px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 16px; }
+
+/* ---------- header ---------- */
+.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+.brand { min-width: 0; }
+.brand h1 { font-family: var(--f-display); font-weight: 700; font-size: 1.85rem; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.brand h1 .arrow { color: var(--muted); font-weight: 600; }
+.brand p { margin: 4px 0 0; color: var(--muted); max-width: 68ch; }
+.transport { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 7px 12px; cursor: pointer; font-weight: 500; white-space: nowrap; transition: border-color .15s, background .15s; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); min-width: 92px; }
+.speed { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; padding-left: 4px; }
+.speed input { width: 130px; accent-color: var(--a); }
+.speed output { font-family: var(--f-mono); font-size: 12px; color: var(--ink); min-width: 9ch; font-variant-numeric: tabular-nums; }
+.kbd-hint { color: var(--muted); font-size: 12px; width: 100%; text-align: right; }
+.kbd-hint kbd { font-family: var(--f-mono); font-size: 11px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--panel); }
+
+.banner { border: 1px solid var(--stop); background: var(--stop-soft); color: var(--ink); border-radius: var(--r); padding: 10px 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.banner strong { color: var(--stop); }
+
+/* ---------- layout ---------- */
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 16px; align-items: start; }
+.left { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+@media (max-width: 1020px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.card-head h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; }
+
+/* ---------- stage ---------- */
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 1fr) minmax(0, 1fr); gap: 12px; }
+@media (max-width: 680px) {
+  .stage { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .wire { grid-column: 1 / -1; order: 3; min-height: 110px; }
+}
+.proc { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.proc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.proc-head .sw { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+#procA .sw { background: var(--a); } #procB .sw { background: var(--b); }
+.proc-head h2 { font-family: var(--f-mono); font-size: 15px; font-weight: 600; margin: 0; }
+.pill { margin-left: auto; font-family: var(--f-mono); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; letter-spacing: .02em; white-space: nowrap; }
+.z-normal { background: var(--ok-soft); color: var(--ok); }
+.z-reduce { background: var(--reduce-soft); color: var(--reduce); }
+.z-stop { background: var(--stop-soft); color: var(--stop); }
+.z-idle { background: var(--sunken); color: var(--muted); }
+.proc-body { display: flex; gap: 14px; align-items: stretch; }
+.gauge { position: relative; width: 30px; flex: none; height: 150px; background: var(--sunken); border-radius: 6px; overflow: hidden; border: 1px solid var(--line); }
+.gauge .fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; }
+#procA .fill { background: var(--a); } #procB .fill { background: var(--b); }
+.gauge .mark { position: absolute; left: -2px; right: -2px; height: 0; border-top: 2px dashed; }
+.gauge .mark.reduce { border-color: var(--reduce); }
+.gauge .mark.stop { border-color: var(--stop); }
+.proc dl { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; align-content: start; min-width: 0; flex: 1; }
+.proc dl div { display: flex; flex-direction: column; min-width: 0; }
+.proc dt { font-family: var(--f-mono); font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proc dd { margin: 0; font-family: var(--f-mono); font-size: 15px; font-variant-numeric: tabular-nums; font-weight: 500; }
+.proc dd.big { font-size: 24px; font-weight: 600; line-height: 1.1; }
+
+.wire { position: relative; min-height: 180px; display: flex; flex-direction: column; justify-content: center; }
+.wire canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.wire .lane { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; font-family: var(--f-mono); font-size: 11px; color: var(--muted); padding-inline: 6px; }
+.wire .lane b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.wire .lane.ab b { color: var(--a); } .wire .lane.ba b { color: var(--b); }
+.wire .gap { height: 64px; }
+
+/* ---------- triggers ---------- */
+.triggers { padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.triggers .lbl { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; margin-right: 4px; }
+.cmd { font-family: var(--f-mono); font-size: 12.5px; border: 1px solid var(--line); background: var(--sunken); border-radius: 7px; padding: 6px 10px; cursor: pointer; white-space: nowrap; }
+.cmd:hover { border-color: var(--a); }
+.cmd .p { color: var(--muted); }
+.custom { display: inline-flex; align-items: center; gap: 0; border: 1px solid var(--line); border-radius: 7px; background: var(--sunken); font-family: var(--f-mono); font-size: 12.5px; overflow: hidden; }
+.custom span { padding: 6px 0 6px 10px; white-space: nowrap; }
+.custom input { width: 52px; border: 0; background: transparent; padding: 6px 2px; text-align: center; font-family: var(--f-mono); font-size: 12.5px; }
+.custom button { border: 0; border-left: 1px solid var(--line); background: transparent; padding: 6px 10px; cursor: pointer; font-family: var(--f-mono); font-size: 12.5px; }
+.custom button:hover { color: var(--a); }
+
+/* ---------- chart ---------- */
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; width: 16px; height: 0; border-top: 2.5px solid; }
+.legend .la i { border-color: var(--a); } .legend .lb i { border-color: var(--b); }
+.legend .lr i { border-top: 2px dashed var(--reduce); } .legend .ls i { border-top: 2px dashed var(--stop); }
+.chart-wrap { position: relative; height: 260px; padding: 6px 8px 4px; }
+.chart-wrap canvas { width: 100%; height: 100%; display: block; }
+.window-ctl { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.window-ctl select { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 2px 4px; font-size: 12px; }
+
+/* ---------- stats ---------- */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.stat { background: var(--panel); padding: 9px 12px; min-width: 0; }
+.stat .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat .v { font-family: var(--f-mono); font-size: 17px; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* ---------- console ---------- */
+.console-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.console-tools label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-family: var(--f-mono); }
+.console-tools input { accent-color: var(--a); }
+.linkbtn { border: 0; background: none; color: var(--muted); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; padding: 0; font-size: 12px; }
+#log { margin: 0; height: 280px; overflow: auto; background: var(--sunken); border-radius: 0 0 var(--r) var(--r); padding: 10px 14px; font-family: var(--f-mono); font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-break: break-all; }
+#log .l-a { color: var(--a); }
+#log .l-b { color: var(--b); }
+#log .l-sh { color: var(--ink); font-weight: 600; }
+#log .l-out { color: var(--ink); }
+#log .l-reduce { color: var(--reduce); font-weight: 500; }
+#log .l-stop { color: var(--stop); font-weight: 500; }
+#log .l-ok { color: var(--ok); font-weight: 500; }
+#log .l-mut { color: var(--muted); }
+
+/* ---------- parameter rail ---------- */
+.panel { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); max-height: calc(100vh - 24px); overflow: auto; display: flex; flex-direction: column; }
+@media (max-width: 1020px) { .panel { position: static; max-height: none; } }
+.panel-sec { padding: 12px 14px 14px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+.panel-sec:last-child { border-bottom: 0; }
+.panel-sec h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; }
+.panel-sec .note { margin: -4px 0 0; font-size: 12px; color: var(--muted); }
+.panel-sec select { width: 100%; border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 6px 8px; }
+.ctl { display: flex; flex-direction: column; gap: 3px; }
+.ctl-top { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; }
+.ctl-top label { min-width: 0; }
+.ctl-top .tag { font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+.ctl-top .tag.inf { color: var(--reduce); font-weight: 600; }
+.ctl-row { display: grid; grid-template-columns: minmax(0, 1fr) 76px; gap: 8px; align-items: center; }
+.ctl-row input[type=range] { width: 100%; accent-color: var(--a); }
+.ctl-row input[type=number] { width: 100%; border: 1px solid var(--line); background: var(--sunken); border-radius: 6px; padding: 3px 6px; font-family: var(--f-mono); font-size: 12.5px; text-align: right; font-variant-numeric: tabular-nums; }
+.ctl.check { flex-direction: row; align-items: center; gap: 8px; font-size: 12.5px; cursor: pointer; }
+.ctl.check input { accent-color: var(--a); }
+.ctl.pa label { color: var(--ink); } .ctl.pa label::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--a); margin-right: 6px; }
+.ctl.pb label::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--b); margin-right: 6px; }
+.code { position: relative; }
+.code pre { margin: 0; background: var(--sunken); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-family: var(--f-mono); font-size: 11.5px; line-height: 1.55; overflow-x: auto; white-space: pre; }
+.code pre .c { color: var(--muted); }
+.code .btn { position: absolute; top: 6px; right: 6px; padding: 2px 8px; font-size: 11px; }
+
+@media (prefers-reduced-motion: reduce) { .btn, .cmd { transition: none; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1>pingpongA <span class="arrow">⇄</span> pingpongB</h1>
+      <p>Mô phỏng hai <code>gen_server</code> bắn <code>gen_server:cast</code> qua lại, với cơ chế giảm tải theo <code>message_queue_len</code>. Mọi thông số đổi được trong lúc chạy, giống một lần hot code upgrade.</p>
+    </div>
+    <div class="transport">
+      <button class="btn primary" id="btnRun" type="button">❚❚ Dừng</button>
+      <button class="btn" id="btnStep" type="button">+1 tick</button>
+      <button class="btn" id="btnReset" type="button">Đặt lại</button>
+      <label class="speed" for="simSpeed">Tốc độ <input type="range" id="simSpeed" min="0" max="100" step="1"> <output id="simSpeedOut"></output></label>
+      <div class="kbd-hint"><kbd>Space</kbd> chạy/dừng · <kbd>S</kbd> bước · <kbd>P</kbd> ping · <kbd>T</kbd> rand_trigger · <kbd>R</kbd> đặt lại</div>
+    </div>
+  </header>
+
+  <div class="banner" id="banner" hidden></div>
+
+  <main class="layout">
+    <section class="left">
+      <div class="stage">
+        <article class="card proc" id="procA"></article>
+        <div class="wire" id="wire">
+          <canvas id="wireCanvas"></canvas>
+          <div class="lane ab"><span>A → B · {cast_msg, L1, L2}</span><span><b id="rateAB">0</b> msg/tick</span></div>
+          <div class="gap"></div>
+          <div class="lane ba"><span><b id="rateBA">0</b> msg/tick</span><span>B → A · {cast_msg, L1, L2, Map}</span></div>
+        </div>
+        <article class="card proc" id="procB"></article>
+      </div>
+
+      <div class="card triggers">
+        <span class="lbl">Shell</span>
+        <button class="cmd" id="trPing" type="button"><span class="p">&gt; </span>pingpongA:message(ping).</button>
+        <button class="cmd" id="trRand" type="button"><span class="p">&gt; </span>pingpongA:rand_trigger().</button>
+        <button class="cmd" id="trRand10" type="button"><span class="p">&gt; </span>rand_trigger() ×10</button>
+        <span class="custom"><span>message(random_map(</span><input id="customLen" type="number" min="1" max="500" value="20" aria-label="Độ dài random_map"><span>)).</span><button id="trCustom" type="button">gửi</button></span>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>message_queue_len theo thời gian</h3>
+          <div class="legend">
+            <span class="la"><i></i>QUEUE_A</span><span class="lb"><i></i>QUEUE_B</span>
+            <span class="lr"><i></i>RECUDE_LIMIT</span><span class="ls"><i></i>STOP_LIMIT</span>
+          </div>
+          <label class="window-ctl" for="chartWindow">Cửa sổ
+            <select id="chartWindow">
+              <option value="1000">1 000 tick</option>
+              <option value="3000">3 000 tick</option>
+              <option value="6000">6 000 tick</option>
+              <option value="15000">15 000 tick</option>
+            </select>
+          </label>
+        </div>
+        <div class="chart-wrap"><canvas id="chart"></canvas></div>
+      </div>
+
+      <div class="stats" id="stats"></div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>Erlang shell · test@local</h3>
+          <div class="console-tools">
+            <label for="debugLog"><input type="checkbox" id="debugLog"> logger:set_module_level(…, debug)</label>
+            <span id="skipped"></span>
+            <button class="linkbtn" id="clearLog" type="button">xoá</button>
+          </div>
+        </div>
+        <pre id="log" aria-live="off"></pre>
+      </div>
+    </section>
+
+    <aside class="card panel" id="panel">
+      <div class="panel-sec">
+        <h3>Kịch bản có sẵn</h3>
+        <select id="preset" aria-label="Kịch bản"></select>
+        <p class="note" id="presetNote"></p>
+      </div>
+      <div id="groups"></div>
+      <div class="panel-sec">
+        <h3>Cấu hình hiện tại dưới dạng Erlang</h3>
+        <div class="code"><pre id="erlCode"></pre><button class="btn" id="copyErl" type="button">Copy</button></div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------------------------------------------------------------- params
+  const INF = 10000;            // slider max; at or above this value a limit is disabled
+  const QUEUE_CAP = 300000;     // auto-pause guard
+  const LS_KEY = 'pingpong-lab-v1';
+
+  const DEFAULTS = {
+    reduceA: 1000, stopA: 2000, reduceB: 1000, stopB: 2000, linkLimits: true,
+    fanNormal: 2, fanReduce: 1, fanStop: 0, fanTrigger: 2,
+    speedA: 40, speedB: 40, baseCost: 1, elemCostA: 0, elemCostB: 0.1, jitter: 10,
+    randMax: 100, callTimeout: 5000,
+  };
+
+  const PRESETS = [
+    { id: 'code', name: 'Code gốc (tag bonus1)', p: {},
+      note: 'Đúng các hằng số trong src/. B tốn thêm công cho do_create_map nên chạm ngưỡng trước: QUEUE_B dao động quanh 2000, QUEUE_A quanh 0, như README mô tả.' },
+    { id: 'nobp', name: 'Tắt backpressure', p: { reduceA: INF, stopA: INF, reduceB: INF, stopB: INF },
+      note: 'Không có RECUDE_LIMIT/STOP_LIMIT. Mỗi message sinh 2 message mới, mailbox tăng theo cấp số nhân cho đến khi mô phỏng tự dừng.' },
+    { id: 'bfast', name: 'pingpongB mạnh hơn', p: { speedB: 90 },
+      note: 'B xử lý nhanh gấp đôi. Lần này A là bên bị dồn ứ và chạm STOP_LIMIT.' },
+    { id: 'fan1', name: 'Fan-out = 1', p: { fanNormal: 1 },
+      note: 'Mỗi message chỉ sinh đúng 1 message. Tổng số message trong hệ thống giữ nguyên bằng số bản trigger gửi vào.' },
+    { id: 'sym', name: 'Đối xứng hoàn toàn', p: { elemCostB: 0, jitter: 0 },
+      note: 'Hai server giống hệt nhau, không nhiễu. Hai hàng đợi tăng song song và cùng chạm ngưỡng.' },
+    { id: 'low', name: 'Ngưỡng thấp 100 / 200', p: { reduceA: 100, stopA: 200, reduceB: 100, stopB: 200 },
+      note: 'Cùng động lực học nhưng ở quy mô nhỏ, dễ quan sát từng chu kỳ dao động.' },
+    { id: 'heavy', name: 'Payload lớn', p: { elemCostB: 0.6, randMax: 100 },
+      note: 'do_create_map đắt hơn nhiều. Bấm rand_trigger vài lần để thấy map lớn làm B chậm lại.' },
+  ];
+
+  const GROUPS = [
+    { title: 'Ngưỡng hàng đợi', note: 'So sánh QueueCnt > LIMIT, trong đó QueueCnt là message_queue_len còn lại sau khi lấy message hiện tại ra. Kéo hết cỡ để tắt (∞).', items: [
+      { k: 'reduceA', label: 'A · RECUDE_LIMIT', min: 0, max: INF, step: 10, inf: true, cls: 'pa' },
+      { k: 'stopA', label: 'A · STOP_LIMIT', min: 0, max: INF, step: 10, inf: true, cls: 'pa' },
+      { k: 'reduceB', label: 'B · RECUDE_LIMIT', min: 0, max: INF, step: 10, inf: true, cls: 'pb' },
+      { k: 'stopB', label: 'B · STOP_LIMIT', min: 0, max: INF, step: 10, inf: true, cls: 'pb' },
+      { k: 'linkLimits', type: 'check', label: 'Dùng chung ngưỡng cho A và B' },
+    ]},
+    { title: 'Số bản gửi đi (fan-out)', note: 'Mỗi message xử lý xong sinh ra bao nhiêu gen_server:cast sang server bên kia.', items: [
+      { k: 'fanNormal', label: 'Dưới RECUDE_LIMIT', min: 0, max: 4, step: 1, code: 2 },
+      { k: 'fanReduce', label: 'Vượt RECUDE_LIMIT', min: 0, max: 4, step: 1, code: 1 },
+      { k: 'fanStop', label: 'Vượt STOP_LIMIT', min: 0, max: 4, step: 1, code: 0 },
+      { k: 'fanTrigger', label: 'Khi A nhận trigger từ shell', min: 0, max: 4, step: 1, code: 2 },
+    ]},
+    { title: 'Tốc độ xử lý', note: '1 tick ≈ 1 ms ảo. Mỗi tick, mỗi process được một quỹ công (tương tự reductions) để tiêu cho các message trong mailbox.', items: [
+      { k: 'speedA', label: 'A · công mỗi tick', min: 1, max: 200, step: 1, cls: 'pa' },
+      { k: 'speedB', label: 'B · công mỗi tick', min: 1, max: 200, step: 1, cls: 'pb' },
+      { k: 'baseCost', label: 'Chi phí cơ bản mỗi message', min: 0.2, max: 5, step: 0.1 },
+      { k: 'elemCostA', label: 'A · chi phí mỗi phần tử', min: 0, max: 1, step: 0.01, cls: 'pa' },
+      { k: 'elemCostB', label: 'B · chi phí mỗi phần tử (do_create_map)', min: 0, max: 1, step: 0.01, cls: 'pb' },
+      { k: 'jitter', label: 'Nhiễu scheduler (%)', min: 0, max: 50, step: 1 },
+    ]},
+    { title: 'Trigger', items: [
+      { k: 'randMax', label: 'rand_trigger: Len = rand:uniform(N)', min: 1, max: 100, step: 1, code: 100 },
+      { k: 'callTimeout', label: 'Timeout gen_server:call (tick)', min: 100, max: 20000, step: 100, code: 5000 },
+    ]},
+  ];
+
+  const LINKED = { reduceA: 'reduceB', reduceB: 'reduceA', stopA: 'stopB', stopB: 'stopA' };
+
+  const P = { ...DEFAULTS };
+  let simSpeedVal = 60, chartWindow = 3000, debugOn = true;
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+    if (saved && saved.P) {
+      for (const k of Object.keys(DEFAULTS)) if (k in saved.P && typeof saved.P[k] === typeof DEFAULTS[k]) P[k] = saved.P[k];
+      if (typeof saved.speed === 'number') simSpeedVal = saved.speed;
+      if (typeof saved.win === 'number') chartWindow = saved.win;
+      if (typeof saved.debug === 'boolean') debugOn = saved.debug;
+    }
+  } catch (_) {}
+  const save = () => { try { localStorage.setItem(LS_KEY, JSON.stringify({ P, speed: simSpeedVal, win: chartWindow, debug: debugOn })); } catch (_) {} };
+
+  const $ = (id) => document.getElementById(id);
+  const fmtInt = (n) => Math.round(n).toLocaleString('vi-VN');
+  const isInf = (v) => v >= INF;
+
+  // ---------------------------------------------------------------- erlang terms
+  // generate_random_atom/0 uses rand:uniform(26) + 97, i.e. chars 98..123 ('b'..'{').
+  const atomOf = (code) => code === 123 ? "'{'" : String.fromCharCode(code);
+  const trunc = (s, n) => s.length > n ? s.slice(0, n - 4) + ' ...' : s;
+
+  const payloads = [];
+  function mkPayload(keys, vals) {
+    const l1 = '[' + keys.join(',') + ']', l2 = '[' + vals.join(',') + ']';
+    const map = '#{' + keys.map((k, i) => k + ' => ' + vals[i]).join(',') + '}';
+    payloads.push({ len: keys.length, lists: trunc(l1, 90) + trunc(l2, 90), l1: trunc(l1, 90), l2: trunc(l2, 90), map: trunc(map, 160) });
+    return payloads.length - 1;
+  }
+  function randomMap(len) {
+    const m = new Map();
+    for (let i = 0; i < len; i++) m.set(98 + Math.floor(Math.random() * 26), 1 + Math.floor(Math.random() * 100));
+    const codes = [...m.keys()].sort((a, b) => a - b);   // maps:keys/1 returns keys in term order
+    return mkPayload(codes.map(atomOf), codes.map((c) => String(m.get(c))));
+  }
+
+  // ---------------------------------------------------------------- simulation state
+  const mkProc = (name) => ({ name, q: [], head: 0, budget: 0, handled: 0, red: 0, peak: 0, sent: 0, blocked: 0,
+    zoneCount: { normal: 0, reduce: 0, stop: 0 }, shownZone: 'idle', loggedZone: 'normal', lastZoneLog: -1e9 });
+  let A, B, t, calls, pendingCalls, promptN, frameAB, frameBA, frameTicks, rateAB, rateBA, overflowed;
+  const HIST = 20000;
+  const histA = new Float32Array(HIST), histB = new Float32Array(HIST);
+  let histLen = 0, histPos = 0;
+
+  const qlen = (p) => p.q.length - p.head;
+  const peek = (p) => p.q[p.head];
+  function take(p) {
+    const v = p.q[p.head++];
+    if (p.head > 8192 && p.head * 2 > p.q.length) { p.q = p.q.slice(p.head); p.head = 0; }
+    return v;
+  }
+  const push = (p, v) => { p.q.push(v); };
+
+  function zoneOf(qc, reduce, stop) {
+    if (!isInf(stop) && qc > stop) return 'stop';
+    if (!isInf(reduce) && qc > reduce) return 'reduce';
+    return 'normal';
+  }
+  const fanFor = (z) => z === 'stop' ? P.fanStop : z === 'reduce' ? P.fanReduce : P.fanNormal;
+
+  function resetSim() {
+    A = mkProc('pingpongA'); B = mkProc('pingpongB');
+    t = 0; calls = []; pendingCalls = new Set(); promptN = 1;
+    frameAB = frameBA = frameTicks = 0; rateAB = rateBA = 0; overflowed = false;
+    histLen = 0; histPos = 0; payloads.length = 0; dots.length = 0;
+    $('banner').hidden = true;
+  }
+
+  // ---------------------------------------------------------------- shell triggers
+  function shell(cmd, payloadId, kind) {
+    const id = calls.length;
+    calls.push({ id, t, payloadId, kind, timedOut: false, n: promptN });
+    pendingCalls.add(id);
+    logLine(`(test@local)${promptN++}> ${cmd}`, 'l-sh');
+    push(A, -(id + 1));           // gen_server:call lands at the back of A's mailbox
+  }
+  const ping = () => shell('pingpongA:message(ping).', mkPayload(['1', '2', '3', '4', '5'], ['a', 'b', 'c', 'd', 'e']), 'ping');
+  const randTrigger = () => shell('pingpongA:rand_trigger().', randomMap(1 + Math.floor(Math.random() * P.randMax)), 'map');
+  const customTrigger = (n) => shell(`pingpongA:message(pingpongA:random_map(${n})).`, randomMap(n), 'map');
+
+  function handleCall(c) {
+    pendingCalls.delete(c.id);
+    const p = payloads[c.payloadId];
+    for (let i = 0; i < P.fanTrigger; i++) push(B, c.payloadId);
+    frameAB += P.fanTrigger; A.sent += P.fanTrigger;
+    const waited = t - c.t;
+    if (c.kind === 'ping') {
+      if (debugOn) logLine(`=DEBUG REPORT==== Starting pingpong...: ${p.l1} ${p.l2}`, 'l-mut');
+      logLine(c.timedOut ? `(reply cho lệnh ${c.n} bị bỏ: caller đã timeout)` : `ok   (chờ ${fmtInt(waited)} tick trong mailbox của A)`, c.timedOut ? 'l-mut' : 'l-out');
+    } else {
+      logLine(` Starting pingpong...PING MESSAGE: ${p.map}${c.timedOut ? '' : 'ok'}`, 'l-out');
+      if (c.timedOut) logLine(`(reply cho lệnh ${c.n} bị bỏ: caller đã timeout)`, 'l-mut');
+    }
+  }
+
+  // ---------------------------------------------------------------- per-message handlers
+  function noteZone(p, z, qc, limitName) {
+    p.zoneCount[z]++;
+    if (z !== p.loggedZone && t - p.lastZoneLog > 150) {
+      const msg = z === 'stop' ? `${p.name}: QUEUE ${fmtInt(qc)} > STOP_LIMIT → ngừng gửi (fan-out ${P.fanStop})`
+        : z === 'reduce' ? `${p.name}: QUEUE ${fmtInt(qc)} > RECUDE_LIMIT → giảm còn fan-out ${P.fanReduce}`
+        : `${p.name}: QUEUE ${fmtInt(qc)} về dưới ngưỡng → fan-out ${P.fanNormal}`;
+      logLine(`[t=${fmtInt(t)}] ${msg}`, z === 'stop' ? 'l-stop' : z === 'reduce' ? 'l-reduce' : 'l-ok');
+      p.loggedZone = z; p.lastZoneLog = t;
+    }
+  }
+
+  // pingpongA:handle_cast({cast_msg, L1, L2, Map}) and handle_call({msg, _})
+  function stepA() {
+    const e = peek(A);
+    const cost = e < 0 ? P.baseCost : P.baseCost + P.elemCostA * payloads[e].len;
+    if (A.budget < cost) return false;
+    take(A); A.budget -= cost; A.red += cost; A.handled++;
+    if (e < 0) { handleCall(calls[-e - 1]); return true; }
+    const qc = qlen(A);
+    const z = zoneOf(qc, P.reduceA, P.stopA);
+    noteZone(A, z, qc);
+    const n = fanFor(z);
+    for (let i = 0; i < n; i++) push(B, e);
+    A.sent += n; frameAB += n; if (n === 0) A.blocked++;
+    debugLine(` B -> A(pingpongA): ${payloads[e].map}......QUEUE_A: ${qc}`, 'l-b');
+    return true;
+  }
+
+  // pingpongB:handle_cast({cast_msg, L1, L2}) — builds the map only when it will send
+  function stepB() {
+    const e = peek(B);
+    const qc = qlen(B) - 1;
+    const z = zoneOf(qc, P.reduceB, P.stopB);
+    const cost = P.baseCost + (z === 'stop' ? 0 : P.elemCostB * payloads[e].len);
+    if (B.budget < cost) return false;
+    take(B); B.budget -= cost; B.red += cost; B.handled++;
+    noteZone(B, z, qc);
+    const n = fanFor(z);
+    for (let i = 0; i < n; i++) push(A, e);
+    B.sent += n; frameBA += n; if (n === 0) B.blocked++;
+    debugLine(` A -> B(pingpongB): ${payloads[e].lists}......QUEUE_B: ${qc}`, 'l-a');
+    return true;
+  }
+
+  function tick() {
+    t++;
+    const j = P.jitter / 100;
+    A.budget = Math.min(A.budget + P.speedA * (1 + j * (Math.random() * 2 - 1)), P.speedA * 4 + 50);
+    B.budget = Math.min(B.budget + P.speedB * (1 + j * (Math.random() * 2 - 1)), P.speedB * 4 + 50);
+    // Interleave the two processes message by message, as two schedulers would.
+    let moved = true;
+    while (moved) {
+      moved = false;
+      if (qlen(A) && stepA()) moved = true;
+      if (qlen(B) && stepB()) moved = true;
+    }
+    if (!qlen(A)) A.budget = 0;   // idle time cannot be banked
+    if (!qlen(B)) B.budget = 0;
+    const qa = qlen(A), qb = qlen(B);
+    if (qa > A.peak) A.peak = qa;
+    if (qb > B.peak) B.peak = qb;
+    histA[histPos] = qa; histB[histPos] = qb;
+    histPos = (histPos + 1) % HIST; if (histLen < HIST) histLen++;
+    frameTicks++;
+
+    for (const id of pendingCalls) {
+      const c = calls[id];
+      if (!c.timedOut && t - c.t > P.callTimeout) {
+        c.timedOut = true;
+        logLine(`** exception exit: {timeout,{gen_server,call,[pingpongA,{msg,...}]}}  (lệnh ${c.n}, QUEUE_A = ${fmtInt(qa)})`, 'l-stop');
+      }
+    }
+    if (qa + qb > QUEUE_CAP) {
+      overflowed = true; setRunning(false);
+      const b = $('banner');
+      b.innerHTML = `<strong>Mailbox phình quá ${fmtInt(QUEUE_CAP)} message.</strong> <span>Trên BEAM thật bộ nhớ sẽ tăng đến khi node bị OOM. Mô phỏng đã tự dừng.</span> <button class="btn" type="button" id="bannerReset">Đặt lại</button>`;
+      b.hidden = false;
+      $('bannerReset').onclick = () => { fullReset(); };
+    }
+  }
+
+  // ---------------------------------------------------------------- log
+  const logEl = $('log');
+  const pendingLog = [];
+  let debugAllowance = 0, skippedCount = 0;
+  function logLine(text, cls) { pendingLog.push([text, cls]); }
+  function debugLine(text, cls) {
+    if (!debugOn) return;
+    if (debugAllowance >= 1) { debugAllowance--; pendingLog.push([text, cls]); }
+    else skippedCount++;
+  }
+  function flushLog() {
+    if (!pendingLog.length) return;
+    const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
+    const frag = document.createDocumentFragment();
+    for (const [text, cls] of pendingLog.splice(0, pendingLog.length).slice(-400)) {
+      const s = document.createElement('span'); s.className = cls; s.textContent = text + '\n'; frag.appendChild(s);
+    }
+    logEl.appendChild(frag);
+    while (logEl.childNodes.length > 400) logEl.removeChild(logEl.firstChild);
+    if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // ---------------------------------------------------------------- UI: process cards
+  function cardHTML(key, name) {
+    return `<div class="proc-head"><span class="sw"></span><h2>${name}</h2><span class="pill z-idle" id="pill${key}">idle</span></div>
+      <div class="proc-body">
+        <div class="gauge" aria-hidden="true"><div class="fill" id="fill${key}"></div><div class="mark reduce" id="mr${key}"></div><div class="mark stop" id="ms${key}"></div></div>
+        <dl>
+          <div><dt>message_queue_len</dt><dd class="big" id="q${key}">0</dd></div>
+          <div><dt>message đã xử lý</dt><dd id="h${key}">0</dd></div>
+          <div><dt>reductions (công)</dt><dd id="r${key}">0</dd></div>
+          <div><dt>đỉnh hàng đợi</dt><dd id="pk${key}">0</dd></div>
+        </dl>
+      </div>`;
+  }
+  $('procA').innerHTML = cardHTML('A', 'pingpongA');
+  $('procB').innerHTML = cardHTML('B', 'pingpongB');
+
+  const ZONE_LABEL = () => ({ normal: `NORMAL ×${P.fanNormal}`, reduce: `REDUCE ×${P.fanReduce}`, stop: `STOP ×${P.fanStop}`, idle: 'idle' });
+
+  function renderCard(key, p, reduce, stop, yMax) {
+    const q = qlen(p);
+    $('q' + key).textContent = fmtInt(q);
+    $('h' + key).textContent = fmtInt(p.handled);
+    $('r' + key).textContent = fmtInt(p.red);
+    $('pk' + key).textContent = fmtInt(p.peak);
+    const zc = p.zoneCount;
+    const total = zc.normal + zc.reduce + zc.stop;
+    if (total > 0) p.shownZone = zc.stop >= zc.reduce && zc.stop >= zc.normal ? 'stop' : zc.reduce >= zc.normal ? 'reduce' : 'normal';
+    else if (q === 0) p.shownZone = 'idle';
+    zc.normal = zc.reduce = zc.stop = 0;
+    const pill = $('pill' + key);
+    pill.className = 'pill z-' + p.shownZone;
+    pill.textContent = ZONE_LABEL()[p.shownZone];
+    $('fill' + key).style.height = Math.min(100, q / yMax * 100) + '%';
+    const place = (el, v) => { if (isInf(v) || v > yMax) el.hidden = true; else { el.hidden = false; el.style.bottom = (v / yMax * 100) + '%'; } };
+    place($('mr' + key), reduce); place($('ms' + key), stop);
+  }
+
+  // ---------------------------------------------------------------- UI: stats
+  const STATS = [
+    ['tick', () => fmtInt(t)],
+    ['đang trong mailbox', () => fmtInt(qlen(A) + qlen(B))],
+    ['A → B đã gửi', () => fmtInt(A.sent)],
+    ['B → A đã gửi', () => fmtInt(B.sent)],
+    ['bị chặn (fan-out 0)', () => fmtInt(A.blocked + B.blocked)],
+    ['call đang chờ', () => fmtInt(pendingCalls.size)],
+  ];
+  $('stats').innerHTML = STATS.map((s, i) => `<div class="stat"><div class="k">${s[0]}</div><div class="v" id="st${i}">0</div></div>`).join('');
+
+  // ---------------------------------------------------------------- theme colors for canvas
+  let C = {};
+  function readColors() {
+    const cs = getComputedStyle(document.documentElement);
+    for (const k of ['a', 'b', 'ink', 'muted', 'line', 'reduce', 'stop', 'panel', 'sunken']) C[k] = cs.getPropertyValue('--' + k).trim();
+  }
+  readColors();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors);
+  new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  function fitCanvas(cv) {
+    const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return [ctx, r.width, r.height];
+  }
+
+  // ---------------------------------------------------------------- chart
+  function niceStep(range, count) {
+    const raw = range / count, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * mag;
+  }
+  function computeYMax() {
+    const n = Math.min(histLen, chartWindow);
+    let m = 0;
+    for (let i = 0; i < n; i++) { const idx = (histPos - 1 - i + HIST) % HIST; if (histA[idx] > m) m = histA[idx]; if (histB[idx] > m) m = histB[idx]; }
+    m = Math.max(m, qlen(A), qlen(B));
+    for (const v of [P.reduceA, P.stopA, P.reduceB, P.stopB]) if (!isInf(v)) m = Math.max(m, v * 1.08);
+    m = Math.max(m, 10);
+    const step = niceStep(m, 4);
+    return Math.ceil(m / step) * step;
+  }
+  function drawChart(yMax) {
+    const [ctx, W, H] = fitCanvas($('chart'));
+    ctx.clearRect(0, 0, W, H);
+    const L = 52, R = 74, T = 10, Bm = 22;
+    const pw = W - L - R, ph = H - T - Bm;
+    if (pw < 20 || ph < 20) return;
+    const y = (v) => T + ph - (v / yMax) * ph;
+    ctx.font = '11px ' + getComputedStyle(document.body).getPropertyValue('--f-mono');
+    ctx.textBaseline = 'middle';
+    // grid
+    const step = niceStep(yMax, 4);
+    ctx.lineWidth = 1;
+    for (let v = 0; v <= yMax + 1e-6; v += step) {
+      ctx.strokeStyle = C.line; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(L, Math.round(y(v)) + .5); ctx.lineTo(L + pw, Math.round(y(v)) + .5); ctx.stroke();
+      ctx.fillStyle = C.muted; ctx.textAlign = 'right'; ctx.fillText(fmtInt(v), L - 8, y(v));
+    }
+    // x axis labels
+    const n = Math.min(histLen, chartWindow);
+    const t0 = t - chartWindow;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = C.muted;
+    const xs = niceStep(chartWindow, 5);
+    for (let tv = Math.ceil(Math.max(0, t0) / xs) * xs; tv <= t; tv += xs) {
+      const x = L + ((tv - t0) / chartWindow) * pw;
+      if (x < L + 10 || x > L + pw - 10) continue;
+      ctx.fillText(fmtInt(tv), x, T + ph + 6);
+    }
+    ctx.textAlign = 'left'; ctx.fillText('tick', L + pw + 8, T + ph + 6);
+    // limit lines
+    const lim = [];
+    const same = P.reduceA === P.reduceB && P.stopA === P.stopB;
+    if (same) {
+      lim.push([P.reduceA, C.reduce, 'RECUDE'], [P.stopA, C.stop, 'STOP']);
+    } else {
+      lim.push([P.reduceA, C.reduce, 'RECUDE A'], [P.stopA, C.stop, 'STOP A'], [P.reduceB, C.reduce, 'RECUDE B'], [P.stopB, C.stop, 'STOP B']);
+    }
+    ctx.textBaseline = 'middle';
+    const usedY = [];
+    for (const [v, col, label] of lim) {
+      if (isInf(v) || v > yMax) continue;
+      ctx.strokeStyle = col; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.25;
+      ctx.beginPath(); ctx.moveTo(L, y(v)); ctx.lineTo(L + pw, y(v)); ctx.stroke();
+      let ly = y(v);
+      while (usedY.some((u) => Math.abs(u - ly) < 12)) ly -= 12;
+      usedY.push(ly);
+      ctx.fillStyle = col; ctx.textAlign = 'left'; ctx.fillText(label, L + pw + 8, ly);
+    }
+    ctx.setLineDash([]);
+    if (n < 2) return;
+    // series: per-pixel max envelope
+    const cols = Math.max(2, Math.floor(pw));
+    const series = (hist, col) => {
+      ctx.beginPath();
+      let first = true, lastX = L, lastY = y(0);
+      for (let c = 0; c < cols; c++) {
+        const tA = t0 + (c / cols) * chartWindow, tB = t0 + ((c + 1) / cols) * chartWindow;
+        let m = -1;
+        for (let tv = Math.max(Math.ceil(tA), t - n + 1, 1); tv < tB && tv <= t; tv++) {
+          const idx = (histPos - 1 - (t - tv) + HIST * 2) % HIST;
+          if (hist[idx] > m) m = hist[idx];
+        }
+        if (m < 0) continue;
+        const x = L + c + .5;
+        if (first) { ctx.moveTo(x, y(m)); first = false; } else ctx.lineTo(x, y(Math.min(m, yMax)));
+        lastX = x; lastY = y(Math.min(m, yMax));
+      }
+      ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.stroke();
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(lastX, lastY, 3.5, 0, Math.PI * 2); ctx.fill();
+    };
+    series(histB, C.b);
+    series(histA, C.a);
+  }
+
+  // ---------------------------------------------------------------- wire animation
+  const dots = [];
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  function spawnDots(now) {
+    if (reduceMotion.matches) return;
+    const k1 = Math.min(frameAB, 2), k2 = Math.min(frameBA, 2);
+    for (let i = 0; i < k1; i++) dots.push({ dir: 1, born: now + i * 60, dur: 650 + Math.random() * 200 });
+    for (let i = 0; i < k2; i++) dots.push({ dir: -1, born: now + i * 60, dur: 650 + Math.random() * 200 });
+    if (dots.length > 140) dots.splice(0, dots.length - 140);
+  }
+  function drawWire(now) {
+    const [ctx, W, H] = fitCanvas($('wireCanvas'));
+    ctx.clearRect(0, 0, W, H);
+    const yAB = H / 2 - 18, yBA = H / 2 + 18, x0 = 6, x1 = W - 6;
+    const lane = (yy, col, dir) => {
+      ctx.strokeStyle = C.line; ctx.lineWidth = 2; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(x0, yy); ctx.lineTo(x1, yy); ctx.stroke();
+      const hx = dir > 0 ? x1 : x0;
+      ctx.fillStyle = C.line; ctx.beginPath();
+      ctx.moveTo(hx, yy); ctx.lineTo(hx - dir * 9, yy - 5); ctx.lineTo(hx - dir * 9, yy + 5); ctx.closePath(); ctx.fill();
+    };
+    lane(yAB, C.a, 1); lane(yBA, C.b, -1);
+    for (let i = dots.length - 1; i >= 0; i--) {
+      const d = dots[i], p = (now - d.born) / d.dur;
+      if (p > 1) { dots.splice(i, 1); continue; }
+      if (p < 0) continue;
+      const e = p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+      const x = d.dir > 0 ? x0 + (x1 - x0) * e : x1 - (x1 - x0) * e;
+      ctx.fillStyle = d.dir > 0 ? C.a : C.b;
+      ctx.beginPath(); ctx.arc(x, d.dir > 0 ? yAB : yBA, 4, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // ---------------------------------------------------------------- main loop
+  let running = true, acc = 0, lastNow = performance.now();
+  const tpf = () => 0.1 * Math.pow(2000, simSpeedVal / 100);   // 0.1 .. 200 tick per frame
+  function setRunning(v) {
+    running = v;
+    $('btnRun').textContent = v ? '❚❚ Dừng' : '▶ Chạy';
+  }
+  function frame(now) {
+    const dt = Math.min(0.1, (now - lastNow) / 1000); lastNow = now;
+    debugAllowance = Math.min(debugAllowance + dt * 18, 6);
+    if (running) {
+      acc += tpf();
+      let n = Math.floor(acc); acc -= n;
+      const deadline = performance.now() + 12;
+      while (n-- > 0 && running) { tick(); if (performance.now() > deadline) { acc = 0; break; } }
+    }
+    render(now);
+    requestAnimationFrame(frame);
+  }
+  function render(now) {
+    if (frameTicks > 0) {
+      rateAB = rateAB * 0.85 + (frameAB / frameTicks) * 0.15;
+      rateBA = rateBA * 0.85 + (frameBA / frameTicks) * 0.15;
+    }
+    spawnDots(now);
+    frameAB = frameBA = frameTicks = 0;
+    const yMax = computeYMax();
+    renderCard('A', A, P.reduceA, P.stopA, yMax);
+    renderCard('B', B, P.reduceB, P.stopB, yMax);
+    $('rateAB').textContent = rateAB.toFixed(1);
+    $('rateBA').textContent = rateBA.toFixed(1);
+    STATS.forEach((s, i) => { $('st' + i).textContent = s[1](); });
+    $('skipped').textContent = debugOn && skippedCount ? `đã lược ${fmtInt(skippedCount)} dòng debug` : '';
+    drawChart(yMax);
+    drawWire(now);
+    flushLog();
+  }
+
+  // ---------------------------------------------------------------- parameter panel
+  const groupsEl = $('groups');
+  groupsEl.innerHTML = GROUPS.map((g) => `<div class="panel-sec"><h3>${g.title}</h3>${g.note ? `<p class="note">${g.note}</p>` : ''}${g.items.map((it) => {
+    if (it.type === 'check') return `<label class="ctl check" for="in-${it.k}"><input type="checkbox" id="in-${it.k}"> ${it.label}</label>`;
+    return `<div class="ctl ${it.cls || ''}"><div class="ctl-top"><label for="in-${it.k}">${it.label}</label><span class="tag" id="tag-${it.k}"></span></div>
+      <div class="ctl-row"><input type="range" id="rg-${it.k}" min="${it.min}" max="${it.max}" step="${it.step}" aria-label="${it.label}"><input type="number" id="in-${it.k}" min="${it.min}" max="${it.max}" step="${it.step}"></div></div>`;
+  }).join('')}</div>`).join('');
+  const ITEMS = GROUPS.flatMap((g) => g.items);
+
+  function syncControls() {
+    for (const it of ITEMS) {
+      if (it.type === 'check') { $('in-' + it.k).checked = !!P[it.k]; continue; }
+      $('rg-' + it.k).value = P[it.k];
+      $('in-' + it.k).value = P[it.k];
+      const tag = $('tag-' + it.k);
+      if (it.inf && isInf(P[it.k])) { tag.textContent = '∞ tắt'; tag.className = 'tag inf'; }
+      else if (it.code !== undefined) { tag.textContent = P[it.k] === it.code ? 'như code' : `code: ${it.code}`; tag.className = 'tag'; }
+      else { tag.textContent = ''; tag.className = 'tag'; }
+    }
+    renderErl();
+  }
+  function setParam(k, v) {
+    const it = ITEMS.find((i) => i.k === k);
+    if (it.type !== 'check') {
+      v = Number(v);
+      if (!Number.isFinite(v)) return;
+      v = Math.min(it.max, Math.max(it.min, v));
+      if (it.step >= 1) v = Math.round(v);
+    }
+    P[k] = v;
+    if (P.linkLimits && LINKED[k]) P[LINKED[k]] = v;
+    if (k === 'linkLimits' && v) { P.reduceB = P.reduceA; P.stopB = P.stopA; }
+    $('preset').value = '';
+    $('presetNote').textContent = 'Thông số tuỳ chỉnh. Thay đổi áp dụng ngay cho các message tiếp theo.';
+    syncControls(); save();
+  }
+  for (const it of ITEMS) {
+    if (it.type === 'check') { $('in-' + it.k).addEventListener('change', (e) => setParam(it.k, e.target.checked)); continue; }
+    $('rg-' + it.k).addEventListener('input', (e) => setParam(it.k, e.target.value));
+    $('in-' + it.k).addEventListener('change', (e) => setParam(it.k, e.target.value));
+  }
+
+  const presetSel = $('preset');
+  presetSel.innerHTML = '<option value="">Tuỳ chỉnh</option>' + PRESETS.map((p) => `<option value="${p.id}">${p.name}</option>`).join('');
+  function matchPreset() {
+    const hit = PRESETS.find((pr) => Object.keys(DEFAULTS).every((k) => k === 'linkLimits' || P[k] === ({ ...DEFAULTS, ...pr.p })[k]));
+    presetSel.value = hit ? hit.id : '';
+    $('presetNote').textContent = hit ? hit.note + ' Chọn kịch bản khác sẽ đặt lại mô phỏng và gửi một ping.' : 'Thông số tuỳ chỉnh. Thay đổi áp dụng ngay cho các message tiếp theo.';
+  }
+  presetSel.addEventListener('change', () => {
+    const pr = PRESETS.find((p) => p.id === presetSel.value);
+    if (!pr) return;
+    Object.assign(P, DEFAULTS, pr.p);
+    P.linkLimits = P.reduceA === P.reduceB && P.stopA === P.stopB;
+    syncControls(); matchPreset(); save();
+    fullReset();
+  });
+
+  function renderErl() {
+    const lv = (v) => isInf(v) ? 'infinity' : String(v);
+    const lines = [
+      ['c', '%% src/pingpongA.erl'],
+      ['', `-define(RECUDE_LIMIT, ${lv(P.reduceA)}).`],
+      ['', `-define(STOP_LIMIT, ${lv(P.stopA)}).`],
+      ['c', '%% src/pingpongB.erl'],
+      ['', `-define(RECUDE_LIMIT, ${lv(P.reduceB)}).`],
+      ['', `-define(STOP_LIMIT, ${lv(P.stopB)}).`],
+    ];
+    if ([P.reduceA, P.stopA, P.reduceB, P.stopB].some(isInf)) lines.push(['c', '%% số luôn nhỏ hơn atom, nên QueueCnt > infinity luôn false']);
+    const fanChanged = P.fanNormal !== 2 || P.fanReduce !== 1 || P.fanStop !== 0 || P.fanTrigger !== 2;
+    if (fanChanged) lines.push(['c', `%% fan-out: thường ${P.fanNormal}, reduce ${P.fanReduce}, stop ${P.fanStop}, trigger ${P.fanTrigger}`], ['c', '%% (số lần gọi gen_server:cast trong mỗi nhánh case)']);
+    if (P.randMax !== 100) lines.push(['c', `%% rand_trigger/0: Len = rand:uniform(${P.randMax})`]);
+    const el = $('erlCode'); el.textContent = '';
+    for (const [c, s] of lines) { const sp = document.createElement('span'); if (c) sp.className = c; sp.textContent = s + '\n'; el.appendChild(sp); }
+  }
+  $('copyErl').addEventListener('click', () => {
+    const text = $('erlCode').textContent, btn = $('copyErl');
+    const done = (ok) => { btn.textContent = ok ? 'Đã copy' : 'Chọn để copy'; setTimeout(() => { btn.textContent = 'Copy'; }, 1400); };
+    try {
+      navigator.clipboard.writeText(text).then(() => done(true), () => { selectCode(); done(false); });
+    } catch (_) { selectCode(); done(false); }
+  });
+  function selectCode() { const r = document.createRange(); r.selectNodeContents($('erlCode')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+
+  // ---------------------------------------------------------------- transport + triggers
+  const speedEl = $('simSpeed');
+  speedEl.value = simSpeedVal;
+  const showSpeed = () => { const v = tpf(); $('simSpeedOut').textContent = (v < 1 ? v.toFixed(2) : v < 10 ? v.toFixed(1) : Math.round(v)) + ' tick/khung'; };
+  speedEl.addEventListener('input', () => { simSpeedVal = Number(speedEl.value); showSpeed(); save(); });
+  showSpeed();
+
+  const winEl = $('chartWindow');
+  if (![...winEl.options].some((o) => Number(o.value) === chartWindow)) chartWindow = 3000;
+  winEl.value = String(chartWindow);
+  winEl.addEventListener('change', () => { chartWindow = Number(winEl.value); save(); });
+
+  const dbg = $('debugLog');
+  dbg.checked = debugOn;
+  dbg.addEventListener('change', () => {
+    debugOn = dbg.checked; save();
+    logLine(`(test@local)${promptN++}> logger:set_module_level([pingpongA, pingpongB], ${debugOn ? 'debug' : 'notice'}).`, 'l-sh');
+    logLine('ok', 'l-out');
+  });
+  $('clearLog').addEventListener('click', () => { logEl.textContent = ''; skippedCount = 0; });
+
+  function fullReset() {
+    resetSim();
+    logEl.textContent = ''; skippedCount = 0; pendingLog.length = 0;
+    logLine('(test@local)1> application:start(pingpong_app).', 'l-sh'); promptN = 2;
+    logLine('ok', 'l-out');
+    ping();
+    setRunning(true);
+  }
+  $('btnRun').addEventListener('click', () => { if (overflowed) fullReset(); else setRunning(!running); });
+  $('btnStep').addEventListener('click', () => { setRunning(false); if (!overflowed) tick(); });
+  $('btnReset').addEventListener('click', fullReset);
+  $('trPing').addEventListener('click', ping);
+  $('trRand').addEventListener('click', randTrigger);
+  $('trRand10').addEventListener('click', () => { for (let i = 0; i < 10; i++) randTrigger(); });
+  $('trCustom').addEventListener('click', () => {
+    const n = Math.max(1, Math.min(500, Math.round(Number($('customLen').value) || 1)));
+    $('customLen').value = n; customTrigger(n);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'select' || tag === 'textarea' || tag === 'button') return;
+    const k = e.key.toLowerCase();
+    if (k === ' ') { e.preventDefault(); $('btnRun').click(); }
+    else if (k === 's') $('btnStep').click();
+    else if (k === 'p') ping();
+    else if (k === 't') randTrigger();
+    else if (k === 'r') fullReset();
+  });
+
+  // ---------------------------------------------------------------- boot
+  syncControls(); matchPreset();
+  fullReset();
+  requestAnimationFrame((n) => { lastNow = n; frame(n); });
+})();
+</script>
